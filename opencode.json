@@ -1,0 +1,7 @@
+{
+  "permission": {
+    "*": "ask",
+    "external_directory": "deny",
+    "task": "deny"
+  }
+}
