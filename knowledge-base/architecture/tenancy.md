@@ -3,11 +3,13 @@
 ## 1. Overview
 
 The application supports two user roles: admin and normal users. Every agent
-belongs to exactly one user. Agent access is strictly owner-scoped — no user,
-including the admin, can use another user's agent.
+belongs to exactly one user.
+
+Terminal streaming follows the management access model — the admin can view any
+agent's terminal stream; normal users can only view their own.
 
 **Core principle:** ownership controls access. Management operations may cross
-ownership boundaries (admin), but agent subdomain access never does.
+ownership boundaries (admin). Terminal streaming is management-level access.
 
 ## 2. User roles
 
@@ -17,8 +19,8 @@ ownership boundaries (admin), but agent subdomain access never does.
 | Configure system (provider, cap)  | Yes   | No          |
 | Manage all agents (start/stop)    | Yes   | No          |
 | Manage own agents                 | Yes   | Yes         |
-| Access own agents (subdomain)     | Yes   | Yes         |
-| Access other users' agents        | No    | No          |
+| View other users' agent terminal  | Yes   | No          |
+| streams (via management WS)       |       |             |
 
 The role is stored as an `INTEGER` enum on the users table (0 = normal,
 1 = admin). The admin user is seeded at first startup — there is exactly one
@@ -34,16 +36,16 @@ admin account created during initialization.
   Every query filters by `user_id` from the session. A user cannot see or
   modify agents they do not own.
 
-### Agent subdomain access
+### Terminal streaming access
 
-When a user navigates to `<agent-id>.example.com`, Traefik's ForwardAuth
-middleware resolves the session to `X-Auth-User-Id`. The Go service then
-verifies that the agent's `user_id` matches the requesting user. If not,
-the request is denied — even for the admin.
+Terminal streaming is management-level access. When a user connects to
+`/ws/terminal/<agent-id>` on the management domain, the Go service applies
+the management authorization model:
 
-This check is non-negotiable and applies uniformly. The admin can start,
-stop, reconfigure, or delete any agent through the API, but cannot browse
-to an agent subdomain that belongs to another user.
+- **Admin** — can connect to any agent's terminal stream.
+- **Normal user** — can only connect to their own agents' terminal streams.
+
+For implementation details, see [terminal-agents.md](terminal-agents.md).
 
 ## 4. Agent limits
 
@@ -130,7 +132,32 @@ would cause the user's total to exceed the cap. If so, creation is rejected.
 - **Agent runner** — can query its own memory limit and current usage (read
   from cgroups).
 
-## 7. Agent sharing (future)
+## 7. Session limits
+
+Each agent has a configurable maximum number of concurrent terminal sessions.
+The effective limit is resolved as follows:
+
+1. If a per-agent override is set for the agent, use that value.
+2. Otherwise, use the system-wide default.
+
+The admin configures both through the system settings API:
+
+- **System-wide default** — applies to all agents unless overridden (default: 10).
+- **Per-agent override** — set on a specific agent to raise or lower their cap.
+
+At session creation, the Go service checks the agent's active session count
+against the effective cap. If the count has reached the cap, the session
+creation is rejected with an appropriate error.
+
+### Usage visibility
+
+- **Admin** — can view active session count and caps for any agent.
+- **Agent owner** — can view their own agents' session count and caps.
+
+Sessions are tracked in-memory only by the Go service and do not persist
+across restarts.
+
+## 8. Agent sharing (future)
 
 Agent sharing is a planned feature. When implemented, it will allow users to
 grant other users access to their agents without transferring ownership. The
