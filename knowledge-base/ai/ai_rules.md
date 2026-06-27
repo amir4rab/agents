@@ -12,7 +12,7 @@ The codebase prioritizes:
 - Explicitness
 - Testability
 
-The codebase does not prioritizes:
+The codebase does not prioritize:
 - Architectural purity
 - Pattern Completeness
 - Future hypothetical requirements
@@ -31,7 +31,7 @@ Always:
 Never:
 
 - Introduce new frameworks
-- Introduce new architectural patterns without permisson
+- Introduce new architectural patterns without permission
 - Refactor unrelated code
 - Add complexity without justification
 
@@ -41,7 +41,7 @@ Do not create:
 
 Interfaces are allowed when:
 
-- Defining domain boundries
+- Defining domain boundaries
 - Supporting testing 
 - Multiple implementation exist
 

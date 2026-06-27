@@ -11,9 +11,6 @@ each with its own independent shell process, PTY, and ring buffer. Sessions
 are created dynamically at connection time — users open and close tabs like
 a desktop terminal emulator.
 
-(Web-based agents accessed via a dedicated subdomain may be supported in the
-future.)
-
 ## 2. Architecture
 
 Terminal streaming is a two-hop relay with per-session isolation. The client
@@ -108,7 +105,7 @@ connect. The client uses the `session_id` for reconnection and the
 
 ```json
 {
-  "session_id": "a1b2c3d4",
+  "session_id": 1700000000001,
   "default_name": "Session 1"
 }
 ```
@@ -417,7 +414,7 @@ The Go service uses an in-memory `SessionManager` to track all active sessions:
 
 ```go
 type Session struct {
-    ID         string       // unique session identifier
+    ID         int64        // unique session identifier (snowflake)
     AgentID    int64        // owning agent
     UserID     int64        // owning user (who created the session)
     Name       string       // user-assigned name, optional
@@ -427,10 +424,13 @@ type Session struct {
 }
 
 type SessionManager struct {
-    mu           sync.Mutex
-    sessions     map[int64]map[string]*Session // agentID -> sessionID -> Session
-    maxSessions  int                         // per-agent cap, configurable
+    mu       sync.Mutex
+    sessions map[int64]map[int64]*Session // agentID -> sessionID -> Session
 }
+
+// Session caps are resolved per-agent at connection time:
+// per-agent override if set, otherwise the system-wide default.
+// See tenancy.md §7 for the full cap resolution model.
 ```
 
 ### Session cleanup

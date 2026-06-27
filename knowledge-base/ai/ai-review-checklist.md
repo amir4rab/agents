@@ -1,12 +1,12 @@
-# AI Review Chechlist
+# AI Review Checklist
 
 Before completing work verify:
 
 ## Architecture
 
 - Existing patterns followed
-- No unnecesary abstractions introduced
-- Domain boundries respected
+- No unnecessary abstractions introduced
+- Domain boundaries respected
 
 ## Code Quality
 

@@ -13,7 +13,7 @@ Projects main principles:
 - Simplicity over cleverness
 - Consistency over innovation
 - Explicit code over magic
-- Concrete Implementations over abstractions
+- Concrete implementations over abstractions
 - Existing patterns over new patterns
 
 **Never introduce new architectural approaches without explicit approval.**

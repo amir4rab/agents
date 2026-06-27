@@ -7,9 +7,6 @@ agents and provides browser-based access to their terminal interfaces via
 WebSocket streaming. It is designed for small-scale use — at most a handful of
 users (friends, family).
 
-Web-based agents (accessed via a dedicated subdomain) are not currently
-supported but may be added in the future.
-
 **Key design choices:**
 
 - Single Go binary (management service + embedded frontend + SQLite)

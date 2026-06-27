@@ -10,7 +10,7 @@ proxy is involved.
 **How it works:**
 
 - Users log in on the management domain and receive a session cookie scoped
-  to `.example.com`.
+  to `management.example.com`.
 - The Go service validates the session cookie directly on every request — API
   calls, static asset loads, and WebSocket upgrade handshakes.
 - For terminal agents, the Go service validates the session during the
@@ -25,12 +25,12 @@ proxy is involved.
    an expiration time of 24 hours.
 4. Go service responds with `Set-Cookie: session=<token>`:
    - `Path=/`
-   - `Domain=.example.com`
+   - `Domain=management.example.com`
    - `HttpOnly`, `Secure`, `SameSite=Lax`
    - `Max-Age=86400` (24 hours)
 
-On subsequent requests, the browser sends the cookie to all subdomains of
-`.example.com`. The Go service validates it directly.
+On subsequent requests, the browser sends the cookie to
+`management.example.com`. The Go service validates it directly.
 
 ## 3. Agent access flow
 
@@ -57,18 +57,6 @@ Terminal access follows the management access model:
 This is enforced by the Go service when the client requests
 `/ws/terminal/<agent-id>`. The service looks up the agent, checks the user's
 role, and either allows or rejects the connection.
-
-### Why no ForwardAuth
-
-The terminal WebSocket endpoint is a first-party feature of the management
-service, so the existing management session is sufficient. The agent never
-sees the session cookie — it is consumed by the Go service during the
-handshake and never forwarded. The Go service establishes a separate,
-authenticated connection to the agent using internal credentials or network
-policies. The client has no direct communication with the agent.
-
-For more details on the terminal streaming architecture, see
-[terminal-agents.md](terminal-agents.md).
 
 ## 4. Go service auth endpoints
 
@@ -111,9 +99,9 @@ Key behaviors:
 
 ## 6. Security considerations
 
-- **Cookie theft**: The `.example.com` cookie is sent to all subdomains. The Go
-  service consumes the cookie during the WebSocket handshake and never forwards
-  it to the agent.
+- **Cookie theft**: The cookie is scoped to `management.example.com` and is not
+  accessible from other domains. The Go service consumes the cookie during the
+  WebSocket handshake and never forwards it to the agent.
 - **HttpOnly**: The cookie is not accessible from JavaScript.
 - **HTTPS only**: The `Secure` flag ensures the cookie is never sent over
   plain HTTP.
