@@ -3,10 +3,14 @@
 Before implementing any features:
 
 1) Read ai-rules.md.
-2) Read system-overview.md.
-3) Read relevant backend/frontend rules.
-4) Find an existing implementation.
-5) Follow existing patterns.
+2) Read architecture/system-overview.md.
+3) Read architecture/providers.md.
+4) Read relevant backend/frontend rules.
+5) Find an existing implementation.
+6) Follow existing patterns.
+
+Detailed specifications for each component are in `specs/` — read them
+on-demand when implementing or modifying the relevant component.
 
 Projects main principles:
 
