@@ -5,7 +5,7 @@ Before implementing any features:
 1) Read ai-rules.md.
 2) Read architecture/system-overview.md.
 3) Read architecture/providers.md.
-4) Read relevant backend/frontend rules.
+4) Read architecture/backend-patterns.md and architecture/frontend-patterns.md.
 5) Find an existing implementation.
 6) Follow existing patterns.
 
