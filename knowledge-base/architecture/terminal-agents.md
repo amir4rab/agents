@@ -1,12 +1,13 @@
-# Terminal Agent Architecture
+# Terminal Space Architecture
 
 ## 1. Overview
 
-Terminal-based agents are agents that expose a command-line interface, REPL, or
-terminal UI (TUI). Terminal agents stream their I/O through the Go Management
-Service over WebSocket — the client never connects to the agent directly.
+Terminal-based spaces (called **Spaces**) are environments that expose a
+command-line interface, REPL, or terminal UI (TUI). Terminal spaces stream
+their I/O through the Go Management Service over WebSocket — the client never
+connects to the space directly.
 
-Each agent environment supports **multiple concurrent terminal sessions**,
+Each space environment supports **multiple concurrent terminal sessions**,
 each with its own independent shell process, PTY, and ring buffer. Sessions
 are created dynamically at connection time — users open and close tabs like
 a desktop terminal emulator.
@@ -14,7 +15,7 @@ a desktop terminal emulator.
 ## 2. Architecture
 
 Terminal streaming is a two-hop relay with per-session isolation. The client
-never communicates directly with the agent — all data passes through the Go
+never communicates directly with the space — all data passes through the Go
 service.
 
 **Hop 1 (external):** The client opens a WebSocket to the Go service. Each
@@ -24,18 +25,16 @@ by including the session ID in the path:
 
 | Connection type | Endpoint |
 |---|---|
-| Create new session | `wss://management.example.com/ws/terminal/<agent-id>` |
-| Reconnect to session | `wss://management.example.com/ws/terminal/<agent-id>/<session-id>` |
+| Create new session | `wss://management.example.com/ws/terminal/<space-id>` |
+| Reconnect to session | `wss://management.example.com/ws/terminal/<space-id>/<session-id>` |
 
 Each Hop 1 connection is authenticated via the management session cookie sent
-during the WebSocket handshake and carries terminal output (agent → client)
-and user input (client → agent).
+during the WebSocket handshake and carries terminal output (space -> client)
+and user input (client -> space).
 
-**Hop 2 (internal):** For each session, the Go service calls
-`provider.StartSession()` which returns a `SessionHandle` (providing `Stdin`,
-`Stdout`, `Resize`, `Close`). The provider is responsible for spawning an
-independent process with its own PTY inside the agent's environment. The Go
-service relays bytes between the Hop 1 WebSocket and the `SessionHandle`
+**Hop 2 (internal):** For each session, the Go service calls the provider to
+spawn a new process with its own PTY inside the space's environment. The Go
+service relays bytes between the Hop 1 WebSocket and the session handle
 bidirectionally. The Go service has no knowledge of how the provider creates
 the session — it may exec into a container, connect to an internal WebSocket
 server, or use any other mechanism.
@@ -44,42 +43,34 @@ Each session is fully isolated from others — they share the same filesystem
 and network namespace but have independent shell processes, environment
 variables, and working directories.
 
-### External WebSocket (Client ↔ Go Service)
+### External WebSocket (Client -> Go Service)
 
-- Create: `wss://management.example.com/ws/terminal/<agent-id>`
-- Reconnect: `wss://management.example.com/ws/terminal/<agent-id>/<session-id>`
+- Create: `wss://management.example.com/ws/terminal/<space-id>`
+- Reconnect: `wss://management.example.com/ws/terminal/<space-id>/<session-id>`
 - Authenticated via the management session cookie sent during the WebSocket
   handshake
-- Carries terminal output (agent → client) and user input (client → agent)
-- Protocol: JSON control frames interspersed with raw binary data
+- Protocol: typed frames — output, input, resize, close, error, session info
 
-### Internal Connection (Go Service ↔ Agent) — Provider abstraction
+### Internal Connection (Go Service -> Space) — Provider abstraction
 
-The Go service does not connect to agents directly. Instead, it delegates
-session creation to the agent's registered provider via `StartSession()`:
+The Go service does not connect to spaces directly. Instead, it delegates
+session creation to the space's registered provider:
 
-1. The Go service resolves the provider from the [Provider Registry](providers.md)
-   using the provider name stored in the agent's database record.
-2. The Go service calls `provider.StartSession(ctx, agentID, opts)`.
-3. The provider returns a `SessionHandle` with `Stdin`, `Stdout`, `Resize`,
-   and `Close` methods.
+1. The Go service resolves the provider from the registry using the provider
+   kind stored in the space's database record.
+2. The Go service calls the provider to start a session.
+3. The provider returns a session handle with stdin, stdout, resize, and close
+   methods.
 4. The Go service relays bytes bidirectionally between the Hop 1 WebSocket
-   and the `SessionHandle`.
+   and the session handle.
 
 The provider implementation determines how the session is created:
 
 - **Docker provider** — uses `docker exec` to spawn a new shell process with a
-  PTY inside the container. The provider wraps the process's stdin/stdout in a
-  `SessionHandle`.
+  PTY inside the container.
 - **Firecracker provider** — spawns a new PTY inside the microVM, or connects
-  to an internal WebSocket server running inside the VM that creates a new PTY
-  per connection.
-- **Future providers** — may use SSH, LXC exec, or any other mechanism. As
-  long as the `Provider` interface is satisfied, the Go service handles the
-  session identically.
-
-See [providers.md](providers.md) for the complete interface specification and
-integration contract.
+  to an internal WebSocket server running inside the VM.
+- **Future providers** — may use SSH, LXC exec, or any other mechanism.
 
 ## 3. Authentication & Authorization
 
@@ -99,29 +90,19 @@ same session cookie as the Angular SPA. During the HTTP upgrade handshake:
 
 Terminal access follows the management access model:
 
-- **Admin** — can connect to any agent's terminal stream.
-- **Normal user** — can only connect to their own agents' terminal streams.
-
-This is enforced by the Go service when the client requests
-`/ws/terminal/<agent-id>`. The service looks up the agent, checks the user's
-role, and either allows or rejects the connection.
+- **Admin** — can connect to any space's terminal stream.
+- **Normal user** — can only connect to their own spaces' terminal streams.
 
 ### Session cap enforcement
 
-Before creating a new session, the Go service checks the agent's active session
+Before creating a new session, the Go service checks the space's active session
 count against its configured maximum:
 
-1. Look up the agent's session cap (per-agent override, or system-wide default).
-2. Count currently active sessions for this agent from the in-memory
-   `SessionManager`.
+1. Look up the space's session cap.
+2. Count currently active sessions from the in-memory session manager.
 3. If the count has reached the cap, the WebSocket upgrade is rejected with
-   a 429 status and an error message indicating the limit has been reached.
-4. On session close, the session is removed from the active count, freeing
-   capacity for new sessions.
+   a 429 status.
+4. On session close, the session is removed from the active count.
 
-Session caps are not enforced during reconnection — only during initial
-session creation.
-
-For detailed specifications (WebSocket protocol frame types, frontend
-component structure, lifecycle flows, session buffering), see
-[specs/terminal-agents.md](specs/terminal-agents.md).
+Session caps are not enforced during reconnection — only during initial session
+creation.

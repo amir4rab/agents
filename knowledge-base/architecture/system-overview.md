@@ -3,24 +3,24 @@
 ## 1. Introduction
 
 This project is a self-hosted web service that manages terminal-based software
-agents and provides browser-based access to their terminal interfaces via
-WebSocket streaming. It is designed for small-scale use — at most a handful of
-users (friends, family).
+spaces (called **Spaces**) and provides browser-based access to their terminal
+interfaces via WebSocket streaming. It is designed for small-scale use — at
+most a handful of users (friends, family).
 
 **Key design choices:**
 
 - Single Go binary (management service + embedded frontend + SQLite)
 - A reverse proxy (e.g., Caddy, nginx) handles TLS termination for the
   management domain
-- Agents run in isolated environments managed by **providers** — pluggable
+- Spaces run in isolated environments managed by **providers** — pluggable
   implementations that abstract the underlying technology (Docker, Firecracker,
   etc.). See [providers.md](providers.md).
 - The management service is **provider-agnostic** — it interacts with
   environments exclusively through the Provider interface.
-- Providers are discovered at startup via health-check scan. Only available
-  providers are presented to users for selection.
-- WebSocket relay through the Go service is the primary agent access path —
-  clients never connect to agents directly
+- Providers are plumbed at startup. Only available providers are presented for
+  selection.
+- WebSocket relay through the Go service is the primary access path — clients
+  never connect to spaces directly
 
 ## 2. Architecture
 
@@ -29,34 +29,24 @@ reverse proxy which terminates TLS:
 
 - The **management domain** (`management.example.com`) targets the Go Management
   Service, which serves the Angular SPA, REST API, and WebSocket endpoints.
-- **Terminal-based agents** are accessed through the management domain — their
-  terminal I/O is streamed through the Go Management Service via WebSocket. See
-  [terminal-agents.md](terminal-agents.md).
+- **Terminal-based spaces** are accessed through the management domain — their
+  terminal I/O is streamed through the Go Management Service via WebSocket.
 
-The Go Management Service is a single binary composed of three logical layers:
+The Go Management Service is a single binary composed of the following:
 
 - **HTTP Server** — serves the embedded Angular frontend (`/`), the REST API
   (`/api/*`), and WebSocket connections (`/ws/*`).
-- **Agent Orchestrator** — manages agent lifecycles through the
-  [Provider interface](providers.md) and registers terminal streaming
-  endpoints when agents are created. The orchestrator has no knowledge of
-  the underlying environment technology.
-- **Provider Registry** — an in-memory registry of all provider
-  implementations, scanned at startup for availability. The orchestrator
-  queries the registry to resolve provider instances by name.
-- **SQLite** — embedded database storing users, agents, and sessions.
+- **Provider Interface** — a Go interface in `internal/model/provider/` that
+  abstracts environment lifecycle management.
+- **SQLite** — embedded database storing users, spaces, and sessions.
 
-Agents run in isolated environments managed by **providers**:
+Spaces run in isolated environments managed by **providers**:
 
-- **Docker** (provider) — each agent is a container; suitable for most
-  environments.
-- **Firecracker** (provider) — each agent is a microVM; stronger isolation
-  for advanced setups. A VPS without KVM support cannot run this provider.
-
-Multiple agents can run simultaneously, potentially using different providers.
-The provider is selected by the user at creation time from the list of
-available providers. See [providers.md](providers.md) for details on the
-provider interface, registry, and discovery.
+- **Docker** — each space is a container; suitable for most environments.
+- **Firecracker** — each space is a microVM; stronger isolation for advanced
+  setups. A VPS without KVM support cannot run this provider.
+- **Podman**, **QEMU**, **Container** — additional provider kinds.
+  Docker and Firecracker are the primary targets.
 
 ### Domain layout
 
@@ -68,26 +58,29 @@ provider interface, registry, and discovery.
 
 | Channel       | Path               | Purpose                                  |
 |---------------|--------------------|------------------------------------------|
-| REST API      | `/api/*`           | Agent CRUD, auth, user mgmt              |
-| WebSocket     | `/ws/*`            | Real-time agent logs, status             |
+| REST API      | `/api/*`           | Space CRUD, auth, user mgmt              |
+| WebSocket     | `/ws/*`            | Real-time space status                   |
 | WebSocket     | `/ws/terminal/*`   | Bidirectional terminal I/O for terminal- |
-|               |                    | based agents                             |
+|               |                    | based spaces                             |
 | Static assets | `/`                | Embedded Angular SPA                     |
 
-## 4. Agent lifecycle
+## 4. Space Lifecycle
 
-Terminal agents are created, used, and destroyed through the orchestrator,
+Terminal spaces are created, used, and destroyed through the orchestrator,
 which delegates environment management to the selected provider.
 
-For detailed lifecycle steps, including session creation, reconnection,
-and agent termination, see [specs/system-overview.md](specs/system-overview.md).
+1. User creates a new space, selecting a provider from the available options.
+2. The orchestrator resolves the provider and delegates environment creation.
+3. The provider provisions the environment and returns connection info.
+4. The service records the space's provider and endpoint in the database.
+5. The user accesses the space via the terminal UI.
+6. On deletion, the orchestrator stops the space and cleans up the environment.
 
-## 5. Configuration & deployment
+## 5. Configuration & Deployment
 
 - A single Go binary is all that is needed to run the management service
 - A reverse proxy (e.g., Caddy, nginx) handles TLS termination for the
   management domain
-- Providers are auto-discovered at startup — no manual provider configuration
-  is required. The registry scans all registered providers and reports their
-  availability via the health-check API.
+- Providers are registered at startup — availability checks determine which
+  are usable
 - SQLite database file lives alongside the binary
